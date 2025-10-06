@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>LeetCode Company Problems</title>
+  <style>
+    body { margin: 0; font-family: 'Segoe UI', sans-serif; display: flex; height: 100vh; }
+    #sidebar { width: 260px; background: #f7f9fc; border-right: 1px solid #ccc; overflow-y: auto; padding: 1em; }
+    #sidebar h2 { font-size: 18px; margin-bottom: 0.5em; text-align: center; }
+    #sidebar .company-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; border-radius: 6px; transition: background 0.2s; }
+    #sidebar .company-container.pinned { background: #001f4d; }
+    #sidebar .company-container.pinned button { color: white; background: #001f4d; }
+    #sidebar .company-container.pinned .pin-btn { color: #ffcc00; }
+    #sidebar button { flex: 1; padding: 8px; border: none; background: #e2e6ef; cursor: pointer; text-align: left; border-radius: 6px; transition: background 0.2s; }
+    #sidebar button:hover { background: #d1d5e0; }
+    #sidebar button.active { background: #4285f4; color: white; }
+    .pin-btn { cursor: pointer; font-size: 14px; padding: 0 6px; color: #888; transition: color 0.2s; }
+    .pin-btn.pinned { color: #ff9800; }
+
+    #main { flex: 1; overflow-y: auto; padding: 1em; background: #f2f3f7; }
+    #companyTitle { font-size: 22px; margin-bottom: 0.5em;  }
+    .plan-buttons { margin-bottom: 1em; }
+    .plan-buttons button { margin-right: 6px; padding: 5px 12px; border: 1px solid #ccc; background: #fff; cursor: pointer; border-radius: 6px; transition: background 0.2s; }
+    .plan-buttons button:hover { background: #e0e4eb; }
+    .plan-buttons button.active { background: #28a745; color: white; border-color: #28a745; }
+
+    #filterContainer { margin-bottom: 10px; }
+    #filterContainer label { margin-right: 10px; font-size: 14px; }
+
+    #progressBar { height: 16px; background: #ddd; border-radius: 8px; margin: 10px 0; position: relative; }
+    #progressFill { height: 100%; background: #28a745; border-radius: 8px; width: 0; transition: width 0.3s; }
+
+    .problem { display: flex; justify-content: space-between; align-items: center; border: 1px solid #ddd; border-radius: 8px; padding: 10px 14px; margin-bottom: 8px; background: #fff; transition: transform 0.1s; }
+    .problem:hover { transform: translateY(-2px); box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+    .problem a { text-decoration: none; font-weight: 500; color: #0066cc; }
+    .status { cursor: pointer; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: bold; user-select: none; }
+    .unsolved { background: #f8d7da; color: #721c24; }
+    .inprogress { background: #fff3cd; color: #856404; }
+    .solved { background: #d4edda; color: #155724; }
+
+    .difficulty { margin-left: 10px; padding: 2px 6px; border-radius: 6px; font-size: 11px; font-weight: bold; }
+    .EASY { background: #4ea061;  }
+    .MEDIUM { background: #ffc107;}
+    .HARD { background: #d75c69; }
+  </style>
+</head>
+<body>
+  <div id="sidebar">
+    <button id="myProgressBtn" style="width:100%; margin-top:10px; background:#ffcc00; font-weight:bold;">⭐ My Progress</button>
+    <button id="myCompleteBtn" style="width:100%; margin-top:10px; background:greenyellow; font-weight:bold;">✅ Completed</button>
+    <h2>Companies</h2>
+    <div id="companyList"></div>
+    <hr>
+  </div>
+
+  <div id="main">
+    <h2 id="companyTitle">Select a company</h2>
+    <div class="plan-buttons" id="planButtons"></div>
+
+    <!-- New Filter Section -->
+    <div id="filterContainer" style="display:none;">
+      <label><input type="checkbox" id="filterUnsolved" checked> Unsolved</label>
+      <label><input type="checkbox" id="filterInProgress" checked> In Progress</label>
+      <label><input type="checkbox" id="filterSolved" checked> Solved</label>
+    </div>
+
+    <div id="progressBar"><div id="progressFill"></div></div>
+    <div id="problems"></div>
+  </div>
+
+  <script src="problems.js"></script>
+  <script>
+    const statusLabels = ["unsolved","inprogress","solved"];
+    const categoryOrder = ["Thirty Days","Three Months","Six Months","More Than Six Months","All"];
+
+    let progress = JSON.parse(localStorage.getItem("progress") || "{}");
+    let pinnedCompanies = JSON.parse(localStorage.getItem("pinnedCompanies") || "[]");
+
+    function saveProgress() { localStorage.setItem("progress", JSON.stringify(progress)); }
+    function savePins() { localStorage.setItem("pinnedCompanies", JSON.stringify(pinnedCompanies)); }
+
+    const companyListEl = document.getElementById("companyList");
+    const companyTitleEl = document.getElementById("companyTitle");
+    const problemsEl = document.getElementById("problems");
+    const progressFill = document.getElementById("progressFill");
+    const planButtonsEl = document.getElementById("planButtons");
+    const filterContainer = document.getElementById("filterContainer");
+
+    const filterUnsolved = document.getElementById("filterUnsolved");
+    const filterInProgress = document.getElementById("filterInProgress");
+    const filterSolved = document.getElementById("filterSolved");
+
+    function getActiveFilters() {
+      return {
+        unsolved: filterUnsolved.checked,
+        inprogress: filterInProgress.checked,
+        solved: filterSolved.checked
+      };
+    }
+
+    [filterUnsolved, filterInProgress, filterSolved].forEach(chk => {
+      chk.addEventListener("change", () => {
+        const activeCompany = document.querySelector("#sidebar button.active");
+        if (!activeCompany) return;
+        const company = activeCompany.textContent.trim();
+        const planBtn = document.querySelector(".plan-buttons button.active");
+        const plan = planBtn ? planBtn.textContent.trim() : null;
+        if (company && plan && window.PROBLEMS[company][plan]) {
+          showPlan(company, plan, window.PROBLEMS);
+        }
+      });
+    });
+
+    function showCompany(company, data) {
+      companyTitleEl.textContent = company;
+      planButtonsEl.innerHTML = "";
+      problemsEl.innerHTML = "";
+      filterContainer.style.display = "block";
+
+      let plans = Object.keys(data[company] || {});
+      plans.sort((a,b) => {
+        const idxA = categoryOrder.findIndex(c => c.toLowerCase() === a.trim().toLowerCase());
+        const idxB = categoryOrder.findIndex(c => c.toLowerCase() === b.trim().toLowerCase());
+        return idxA - idxB;
+      });
+
+      plans.forEach((plan, i) => {
+        const btn = document.createElement("button");
+        btn.textContent = plan;
+        if (i === 0) btn.classList.add("active");
+        btn.onclick = () => {
+          document.querySelectorAll(".plan-buttons button").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          showPlan(company, plan, data);
+        };
+        planButtonsEl.appendChild(btn);
+      });
+
+      showPlan(company, plans[0], data);
+    }
+
+    function showPlan(company, plan, data) {
+      problemsEl.innerHTML = "";
+      const problems = data[company][plan] || [];
+      const filters = getActiveFilters();
+      let solvedCount = 0;
+
+      problems
+        .forEach(p => {
+          const status = progress[p.id] || "unsolved";
+          if (status === "solved") solvedCount++;          
+        });
+
+      const ratio = problems.length ? (solvedCount / problems.length * 100) : 0;
+      progressFill.style.width = ratio + "%";
+
+      problems
+        .filter(p => {
+          const status = progress[p.id] || "unsolved";
+          return filters[status];
+        })
+        .forEach(p => {
+          const div = document.createElement("div");
+          div.className = "problem";
+
+          const left = document.createElement("div");
+          const link = document.createElement("a");
+          link.href = p.url || `https://leetcode.com/problemset/all/?search=${encodeURIComponent(p.title)}`;
+          link.target = "_blank";
+          link.textContent = p.title;
+
+          const diff = document.createElement("span");
+          diff.className = "difficulty " + (p.difficulty || "Easy");
+          diff.textContent = p.difficulty || "Easy";
+
+          left.appendChild(link);
+          left.appendChild(diff);
+
+          const status = progress[p.id] || "unsolved";
+          if (status === "solved") solvedCount++;
+
+          const statusBtn = document.createElement("span");
+          statusBtn.className = "status " + status;
+          statusBtn.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+          statusBtn.onclick = () => {
+            let next = (statusLabels.indexOf(progress[p.id] || "unsolved") + 1) % 3;
+            progress[p.id] = statusLabels[next];
+            saveProgress();
+            showPlan(company, plan, data);
+          };
+
+          div.appendChild(left);
+          div.appendChild(statusBtn);
+          problemsEl.appendChild(div);
+        });
+    }
+
+    function buildSidebar() {
+      companyListEl.innerHTML = "";
+      const data = window.PROBLEMS;
+
+      let companies = Object.keys(data).sort((a,b) => a.localeCompare(b));
+
+      companies.sort((a,b) => {
+        const aPinned = pinnedCompanies.includes(a) ? 0 : 1;
+        const bPinned = pinnedCompanies.includes(b) ? 0 : 1;
+        return aPinned - bPinned || a.localeCompare(b);
+      });
+
+      companies.forEach(company => {
+        const container = document.createElement("div");
+        container.className = "company-container" + (pinnedCompanies.includes(company) ? " pinned" : "");
+
+        const btn = document.createElement("button");
+        btn.textContent = company;
+        btn.onclick = () => {
+          document.querySelectorAll("#sidebar button").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          showCompany(company, data);
+        };
+
+        const pin = document.createElement("span");
+        pin.className = "pin-btn " + (pinnedCompanies.includes(company) ? "pinned" : "");
+        pin.textContent = "📌";
+        pin.onclick = (e) => {
+          e.stopPropagation();
+          if (pinnedCompanies.includes(company)) {
+            pinnedCompanies = pinnedCompanies.filter(c => c !== company);
+          } else {
+            pinnedCompanies.push(company);
+          }
+          savePins();
+          buildSidebar();
+        };
+
+        container.appendChild(btn);
+        container.appendChild(pin);
+        companyListEl.appendChild(container);
+      });
+    }
+
+    document.getElementById("myProgressBtn").onclick = () => {
+      companyTitleEl.textContent = "⭐ My Progress";
+      planButtonsEl.innerHTML = "";
+      problemsEl.innerHTML = "";
+      filterContainer.style.display = "none";
+
+      let data = window.PROBLEMS;
+      let allProblems = [];
+
+      Object.keys(data).forEach(company => {
+        Object.keys(data[company]).forEach(plan => {
+          data[company][plan].forEach(p => {
+            if (progress[p.id] && progress[p.id] === "inprogress") {
+              allProblems.push({ ...p, company, plan, status: progress[p.id] });
+            }
+          });
+        });
+      });
+
+      if (allProblems.length === 0) {
+        problemsEl.innerHTML = "<p>No problems marked yet.</p>";
+        return;
+      }
+
+      const myMap = new Map();
+
+      allProblems.forEach(p => {
+        if (!myMap.has(p.title)) {
+          myMap.set(p.title, 'done');
+          const div = document.createElement("div");
+          div.className = "problem";
+
+          const left = document.createElement("div");
+          const link = document.createElement("a");
+          link.href = p.url || `https://leetcode.com/problemset/all/?search=${encodeURIComponent(p.title)}`;
+          link.target = "_blank";
+          link.textContent = p.title;
+
+          const diff = document.createElement("span");
+          diff.className = "difficulty " + (p.difficulty || "Easy");
+          diff.textContent = p.difficulty || "Easy";
+
+          left.appendChild(link);
+          left.appendChild(diff);
+
+          const statusBtn = document.createElement("span");
+          statusBtn.className = "status " + p.status;
+          statusBtn.textContent = p.status.charAt(0).toUpperCase() + p.status.slice(1);
+          statusBtn.onclick = () => {
+            let next = (statusLabels.indexOf(p.status) + 1) % 3;
+            progress[p.id] = statusLabels[next];
+            saveProgress();
+            document.getElementById("myProgressBtn").click();
+          };
+
+          div.appendChild(left);
+          div.appendChild(statusBtn);
+          problemsEl.appendChild(div);
+        }
+      });
+    };
+
+    document.getElementById("myCompleteBtn").onclick = () => {
+      companyTitleEl.textContent = "✅ Completed";
+      planButtonsEl.innerHTML = "";
+      problemsEl.innerHTML = "";
+      filterContainer.style.display = "none";
+
+      let data = window.PROBLEMS;
+      let allProblems = [];
+
+      Object.keys(data).forEach(company => {
+        Object.keys(data[company]).forEach(plan => {
+          data[company][plan].forEach(p => {
+            if (progress[p.id] && progress[p.id] === "solved") {
+              allProblems.push({ ...p, company, plan, status: progress[p.id] });
+            }
+          });
+        });
+      });
+
+      if (allProblems.length === 0) {
+        problemsEl.innerHTML = "<p>No problems marked yet.</p>";
+        return;
+      }
+
+      const myMap = new Map();
+
+      allProblems.forEach(p => {
+        if (!myMap.has(p.title)) {
+          myMap.set(p.title, 'done');
+          const div = document.createElement("div");
+          div.className = "problem";
+
+          const left = document.createElement("div");
+          const link = document.createElement("a");
+          link.href = p.url || `https://leetcode.com/problemset/all/?search=${encodeURIComponent(p.title)}`;
+          link.target = "_blank";
+          link.textContent = p.title;
+
+          const diff = document.createElement("span");
+          diff.className = "difficulty " + (p.difficulty || "Easy");
+          diff.textContent = p.difficulty || "Easy";
+
+          left.appendChild(link);
+          left.appendChild(diff);
+
+          const statusBtn = document.createElement("span");
+          statusBtn.className = "status " + p.status;
+          statusBtn.textContent = p.status.charAt(0).toUpperCase() + p.status.slice(1);
+          statusBtn.onclick = () => {
+            let next = (statusLabels.indexOf(p.status) + 1) % 3;
+            progress[p.id] = statusLabels[next];
+            saveProgress();
+            document.getElementById("myCompleteBtn").click();
+          };
+
+          div.appendChild(left);
+          div.appendChild(statusBtn);
+          problemsEl.appendChild(div);
+        }
+      });
+    };
+
+    buildSidebar();
+  </script>
+</body>
+</html>
